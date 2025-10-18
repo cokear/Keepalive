@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Leaflow 多账号自动签到脚本
-支持冒号分隔多账号和单账号配置
+Leaflow 自动签到脚本
+支持单账号和多账号签到
 """
 
 import os
@@ -23,9 +23,9 @@ class LeaflowAutoCheckin:
     # 配置class类常量
     LOGIN_URL = "https://leaflow.net/login"
     CHECKIN_URL = "https://checkin.leaflow.net"
-    WAIT_TIME_AFTER_LOGIN = 20  # 登录后等待的秒数
+    WAIT_TIME_AFTER_LOGIN = 15  # 登录后等待的秒数
     WAIT_TIME_AFTER_CHECKIN_CLICK = 5  # 点击签到后等待的秒数
-    RETRY_WAIT_TIME_PAGE_LOAD = 20 # 签到页面加载每次重试等待时间
+    RETRY_WAIT_TIME_PAGE_LOAD = 15 # 签到页面加载每次重试等待时间
     RETRY_COUNT_PAGE_LOAD = 3 # 签到页面加载重试次数
 
     def __init__(self, email, password):
@@ -313,7 +313,7 @@ class LeaflowAutoCheckin:
         click_result = self.find_and_click_checkin_button()
         
         if click_result == "ALREADY_CHECKED_IN":
-            return "⏳ 今日已签到，请明日再来"
+            return "⏳ 今日已手动签到"
         if click_result != "CLICK_SUCCESS":
             raise Exception("⚠️ 找不到立即签到按钮或按钮不可点击")
         
@@ -405,14 +405,15 @@ class MultiAccountManager:
         accounts = []
         logger.info("⏳ 开始加载账号配置...")
         
-        # 方法1: 冒号分隔多账号格式
+        # 方法1: 统一从 LEAFLOW_ACCOUNTS 读取多账号（支持逗号或换行）
         accounts_str = os.getenv('LEAFLOW_ACCOUNTS', '').strip()
         if accounts_str:
             try:
-                logger.info("⏳ 尝试解析冒号分隔多账号配置")
-                account_pairs = [pair.strip() for pair in accounts_str.split(',')]
-                
-                logger.info(f"👉 找到 {len(account_pairs)} 个账号")
+                logger.info("⏳ 尝试解析多账号，支持逗号或换行分隔")
+                account_pairs = [
+                    pair.strip() for pair in accounts_str.replace('\r', '').replace(',', '\n').split('\n') if pair.strip()
+                ]
+                logger.info(f"👉 共找到 {len(account_pairs)} 个账号")
                 
                 for i, pair in enumerate(account_pairs):
                     if ':' in pair:
@@ -454,8 +455,10 @@ class MultiAccountManager:
         # 如果所有方法都失败
         logger.error("⚠️ 未找到有效的账号配置")
         logger.error("⚠️ 请检查以下环境变量设置:")
-        logger.error("⚠️ 1. LEAFLOW_ACCOUNTS: 冒号分隔多账号 (email1:pass1,email2:pass2)")
-        logger.error("⚠️ 2. LEAFLOW_EMAIL 和 LEAFLOW_PASSWORD: 单账号")
+        logger.error("⚠️ 1. 多账号变量: LEAFLOW_ACCOUNTS 支持以下两种格式：")
+        logger.error("   - 逗号分隔: user1@gmail.com:pass1,user2@qq.com:pass2")
+        logger.error("   - 换行分隔: user1@gmail.com:pass1\n user2@qq.com:pass2")
+        logger.error("⚠️ 2. 单账号变量 LEAFLOW_EMAIL 和 LEAFLOW_PASSWORD")
         
         raise ValueError("⚠️ 未找到有效的账号配置")
     
@@ -467,22 +470,17 @@ class MultiAccountManager:
         
         try:
             SUCCESS_MSG = "⏳ 今日已手动签到"
-            # 脚本本次签到的账号
-            script_success_count = sum(1 for _, success, result in results if success and result != SUCCESS_MSG)
-            # 本次操作前已签到的账号
-            already_checked_count = sum(1 for _, _, result in results if result == SUCCESS_MSG)
-            # 失败的账号
-            failure_count = sum(1 for _, success, _ in results if not success)
-            # 处理的账号总数
-            total_count = len(results)
-            # 已成功签到的账号总数
-            total_success_count = already_checked_count + script_success_count
+            script_success_count = sum(1 for _, success, result in results if success and result != SUCCESS_MSG)  # 脚本签到的账号数量
+            already_checked_count = sum(1 for _, _, result in results if result == SUCCESS_MSG)  # 手动签到的账号数量
+            failure_count = sum(1 for _, success, _ in results if not success)  # 签到失败的账号数量
+            total_success_count = already_checked_count + script_success_count  # 签到成功的账号数量 (含已手动签到)
+            total_count = len(results)  # 账号总数量
 
             message = f"🎁 Leaflow自动签到通知\n\n"
             message += f"📋 共处理账号: {total_count} 个，其中：\n"
-            message += f"📊 手动签到: {already_checked_count} 个\n"
-            message += f"📊 脚本签到: {script_success_count} 个\n"
-            message += f"📊 签到成功: {total_success_count} 个\n"
+            message += f"👏 手动签到: {already_checked_count} 个\n"
+            message += f"🚀 脚本签到: {script_success_count} 个\n"
+            message += f"✅ 签到成功: {total_success_count} 个\n"
             message += f"❌ 签到失败: {failure_count} 个\n\n"
          
             for email, success, result in results:
@@ -565,3 +563,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
