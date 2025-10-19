@@ -210,13 +210,18 @@ class PellaAutoRenew:
             self.save_debug_info("error_email_input")
             raise Exception(f"❌ 输入邮箱失败: {e}")
 
-        # ========== 步骤 2: 点击第一个 Continue (提交邮箱) ==========
+        # ========== 步骤 2: 点击第一个 Next/Continue (提交邮箱) ==========
         try:
-            logger.info("🔍 步骤 2: 查找并点击 Continue 按钮 (提交邮箱)...")
+            logger.info("🔍 步骤 2: 查找并点击 Next/Continue 按钮 (提交邮箱)...")
 
             continue_btn_selectors = [
-                (By.XPATH, "//button[contains(text(), 'Continue')]"),
-                (By.XPATH, "//button[contains(., 'Continue')]"),
+                # Next 按钮（Pella 使用的是 Next）
+                (By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]"),
+                (By.XPATH, "//button[contains(translate(., 'NEXT', 'next'), 'next')]"),
+                # Continue 按钮（备用）
+                (By.XPATH, "//button[contains(translate(text(), 'CONTINUE', 'continue'), 'continue')]"),
+                (By.XPATH, "//button[contains(translate(., 'CONTINUE', 'continue'), 'continue')]"),
+                # 通用提交按钮
                 (By.CSS_SELECTOR, "button[type='submit']"),
                 (By.XPATH, "//button[@type='submit']"),
             ]
@@ -225,13 +230,13 @@ class PellaAutoRenew:
 
             if not continue_btn_1:
                 self.save_debug_info("error_no_continue_btn_1")
-                raise Exception("❌ 找不到第一个 Continue 按钮")
+                raise Exception("❌ 找不到第一个 Next/Continue 按钮")
 
             initial_url = self.driver.current_url
 
             # 尝试 JS 点击
             self.driver.execute_script("arguments[0].click();", continue_btn_1)
-            logger.info("✅ 已点击 Continue 按钮 (提交邮箱)")
+            logger.info("✅ 已点击 Next/Continue 按钮 (提交邮箱)")
 
             # 等待 URL 变化或页面状态改变
             try:
@@ -274,23 +279,36 @@ class PellaAutoRenew:
             self.save_debug_info("error_password_input")
             raise Exception(f"❌ 输入密码失败: {e}")
 
-        # ========== 步骤 4: 点击最终 Continue (提交登录) ==========
+        # ========== 步骤 4: 点击最终 Next/Continue (提交登录) ==========
         try:
-            logger.info("🔍 步骤 4: 查找最终 Continue 按钮 (提交登录)...")
+            logger.info("🔍 步骤 4: 查找最终 Next/Continue 按钮 (提交登录)...")
 
             # 增加等待时间，确保按钮激活
-            time.sleep(3)
+            time.sleep(5)
 
             login_btn_selectors = [
-                (By.XPATH, "//button[contains(text(), 'Continue')]"),
-                (By.XPATH, "//button[contains(., 'Continue')]"),
-                (By.XPATH, "//button[@type='submit' and contains(., 'Continue')]"),
+                # Next 按钮（优先，Pella 密码页使用 Next）
+                (By.XPATH, "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]"),
+                (By.XPATH, "//button[contains(translate(., 'NEXT', 'next'), 'next')]"),
+                (By.XPATH, "//button[@type='submit' and contains(translate(., 'NEXT', 'next'), 'next')]"),
+                # Continue 按钮（备用）
+                (By.XPATH, "//button[contains(translate(text(), 'CONTINUE', 'continue'), 'continue')]"),
+                (By.XPATH, "//button[contains(translate(., 'CONTINUE', 'continue'), 'continue')]"),
+                (By.XPATH, "//button[@type='submit' and contains(translate(., 'CONTINUE', 'continue'), 'continue')]"),
+                # 表单内的提交按钮
+                (By.CSS_SELECTOR, "form button[type='submit']"),
+                (By.XPATH, "//form//button[@type='submit']"),
+                # Clerk 认证系统特定选择器
+                (By.XPATH, "//button[contains(@class, 'cl-formButtonPrimary')]"),
+                (By.XPATH, "//form//button[contains(@class, 'cl-')]"),
+                # 通用提交按钮
+                (By.CSS_SELECTOR, "button[type='submit']:not([disabled])"),
+                (By.XPATH, "//button[@type='submit' and not(@disabled)]"),
+                # 任何可见的提交按钮
                 (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.XPATH, "//button[@type='submit']"),
-                (By.XPATH, "//form//button[contains(@class, 'cl-')]"),  # Clerk 特定按钮
             ]
 
-            login_btn = self.find_element_with_multiple_selectors(login_btn_selectors, 20)
+            login_btn = self.find_element_with_multiple_selectors(login_btn_selectors, 25)
 
             if not login_btn:
                 self.save_debug_info("error_no_login_btn")
@@ -304,12 +322,22 @@ class PellaAutoRenew:
                     except:
                         pass
 
-                raise Exception("❌ 找不到最终 Continue 按钮")
+                raise Exception("❌ 找不到最终 Next/Continue 按钮")
 
-            # 检查按钮是否可用
-            if not login_btn.is_enabled():
-                logger.warning("⚠️ 登录按钮当前被禁用，等待 3 秒...")
-                time.sleep(3)
+            # 智能等待按钮启用
+            max_wait_for_enable = 10
+            wait_interval = 0.5
+            elapsed = 0
+
+            while not login_btn.is_enabled() and elapsed < max_wait_for_enable:
+                logger.warning(f"⚠️ 登录按钮当前被禁用，等待中... ({elapsed:.1f}s/{max_wait_for_enable}s)")
+                time.sleep(wait_interval)
+                elapsed += wait_interval
+
+            if login_btn.is_enabled():
+                logger.info("✅ 登录按钮已启用")
+            else:
+                logger.warning(f"⚠️ 登录按钮仍被禁用，但继续尝试点击...")
 
             # 尝试多种点击方式
             click_success = False
@@ -317,7 +345,7 @@ class PellaAutoRenew:
             # 方法 1: JS 点击
             try:
                 self.driver.execute_script("arguments[0].click();", login_btn)
-                logger.info("✅ (方法1: JS点击) 已点击 Continue 按钮")
+                logger.info("✅ (方法1: JS点击) 已点击 Next/Continue 按钮")
                 click_success = True
             except Exception as e1:
                 logger.warning(f"⚠️ 方法1失败: {e1}")
@@ -325,7 +353,7 @@ class PellaAutoRenew:
                 # 方法 2: 直接点击
                 try:
                     login_btn.click()
-                    logger.info("✅ (方法2: 直接点击) 已点击 Continue 按钮")
+                    logger.info("✅ (方法2: 直接点击) 已点击 Next/Continue 按钮")
                     click_success = True
                 except Exception as e2:
                     logger.warning(f"⚠️ 方法2失败: {e2}")
